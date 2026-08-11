@@ -19,3 +19,9 @@
 *.local.txt
 *.local.md
 Makefile.local.mk
+
+# Go
+dummy-oidc
+*.exe
+/dist/**
+cobra-docs
