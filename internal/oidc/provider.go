@@ -37,12 +37,14 @@ func NewProvider(issuer string, storage *storage.Storage, keySeed string) (*Prov
 
 // parseEmail derives given name, family name and group (email domain) from an email address.
 // "xxx.yyy@domain.com" yields given name "xxx", family name "yyy", group "domain.com".
+// "xxx.yyy.zzz@domain.com" yields given name "xxx", family name "yyy", group "domain.com" (zzz is ignored).
 // "xxx@domain.com" yields given name "xxx", family name "xxx", group "domain.com".
 func parseEmail(email string) (givenName, familyName, group string) {
 	local, domain, _ := strings.Cut(email, "@")
 
-	if before, after, found := strings.Cut(local, "."); found {
-		return before, after, domain
+	parts := strings.Split(local, ".")
+	if len(parts) >= 2 {
+		return parts[0], parts[1], domain
 	}
 
 	return local, local, domain
