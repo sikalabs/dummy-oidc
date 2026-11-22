@@ -14,9 +14,10 @@ import (
 
 // Config holds the server configuration
 type Config struct {
-	Port    string
-	Issuer  string
-	KeySeed string
+	Port        string
+	Issuer      string
+	KeySeed     string
+	QuickEmails []string
 }
 
 // Server represents the HTTP server
@@ -32,7 +33,7 @@ func NewServer(config *Config) (*Server, error) {
 	store := storage.NewStorage()
 
 	// Create OIDC provider
-	provider, err := oidc.NewProvider(config.Issuer, store, config.KeySeed)
+	provider, err := oidc.NewProvider(config.Issuer, store, config.KeySeed, config.QuickEmails)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create OIDC provider: %w", err)
 	}

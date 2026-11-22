@@ -3,6 +3,7 @@ package oidc
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/http"
 	"net/url"
 	"strings"
@@ -15,23 +16,26 @@ import (
 
 // Provider implements an OIDC provider
 type Provider struct {
-	issuer  string
-	storage *storage.Storage
-	keys    *Keys
+	issuer      string
+	storage     *storage.Storage
+	keys        *Keys
+	quickEmails []string
 }
 
 // NewProvider creates a new OIDC provider
 // keySeed: if empty, generates random keys; if provided, generates deterministic keys from the seed
-func NewProvider(issuer string, storage *storage.Storage, keySeed string) (*Provider, error) {
+// quickEmails: emails offered as one-click login buttons on the login form (may be empty)
+func NewProvider(issuer string, storage *storage.Storage, keySeed string, quickEmails []string) (*Provider, error) {
 	keys, err := NewKeys(keySeed)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate keys: %w", err)
 	}
 
 	return &Provider{
-		issuer:  issuer,
-		storage: storage,
-		keys:    keys,
+		issuer:      issuer,
+		storage:     storage,
+		keys:        keys,
+		quickEmails: quickEmails,
 	}, nil
 }
 
@@ -130,7 +134,30 @@ func (p *Provider) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 
 // showLoginForm displays the email login form
 func (p *Provider) showLoginForm(w http.ResponseWriter, state, redirectURI, nonce string) {
-	html := fmt.Sprintf(`<!DOCTYPE html>
+	hidden := fmt.Sprintf(`
+            <input type="hidden" name="state" value="%s">
+            <input type="hidden" name="redirect_uri" value="%s">
+            <input type="hidden" name="nonce" value="%s">`,
+		html.EscapeString(state), html.EscapeString(redirectURI), html.EscapeString(nonce))
+
+	quickLogin := ""
+	if len(p.quickEmails) > 0 {
+		var b strings.Builder
+		b.WriteString(`<div class="quick-login">`)
+		for _, email := range p.quickEmails {
+			fmt.Fprintf(&b, `
+        <form method="POST" action="/login">
+            <input type="hidden" name="email" value="%s">%s
+            <button type="submit" class="quick">%s</button>
+        </form>`, html.EscapeString(email), hidden, html.EscapeString(email))
+		}
+		b.WriteString(`
+        </div>
+        <div class="divider">or use any email</div>`)
+		quickLogin = b.String()
+	}
+
+	page := fmt.Sprintf(`<!DOCTYPE html>
 <html>
 <head>
     <title>Login</title>
@@ -192,6 +219,27 @@ func (p *Provider) showLoginForm(w http.ResponseWriter, state, redirectURI, nonc
         button:hover {
             background: #c26f1f;
         }
+        .quick-login form {
+            margin-bottom: 0.5rem;
+        }
+        button.quick {
+            background: white;
+            color: #c26f1f;
+            border: 1px solid #d9822b;
+            text-align: left;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        button.quick:hover {
+            background: #fff4e5;
+        }
+        .divider {
+            margin: 1.25rem 0;
+            text-align: center;
+            font-size: 13px;
+            color: #888;
+        }
         .info {
             margin-top: 1rem;
             padding: 12px;
@@ -206,11 +254,9 @@ func (p *Provider) showLoginForm(w http.ResponseWriter, state, redirectURI, nonc
     <div class="container">
         <div class="warning-banner">&#9888; Development only &mdash; no authentication</div>
         <h1>Sign in</h1>
+        %s
         <form method="POST" action="/login">
-            <input type="email" name="email" placeholder="Enter your email" required autofocus autocomplete="off">
-            <input type="hidden" name="state" value="%s">
-            <input type="hidden" name="redirect_uri" value="%s">
-            <input type="hidden" name="nonce" value="%s">
+            <input type="email" name="email" placeholder="Enter your email" required autofocus autocomplete="off">%s
             <button type="submit">Login</button>
         </form>
         <div class="info">
@@ -218,10 +264,10 @@ func (p *Provider) showLoginForm(w http.ResponseWriter, state, redirectURI, nonc
         </div>
     </div>
 </body>
-</html>`, state, redirectURI, nonce)
+</html>`, quickLogin, hidden)
 
 	w.Header().Set("Content-Type", "text/html")
-	w.Write([]byte(html))
+	w.Write([]byte(page))
 }
 
 // HandleLogin handles the email submission and logs the user in immediately
